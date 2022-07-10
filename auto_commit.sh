@@ -1,6 +1,6 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-git pull
+git pull origin master
 git add . 
 git commit -m "Auto commit" 
-git push
+git push origin master
