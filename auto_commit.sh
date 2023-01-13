@@ -2,7 +2,10 @@
 cd "$(dirname "$0")"
 # Check if the current branch has diverged
 git fetch origin
-if [ git rev-list HEAD..origin/$(git rev-parse --abbrev-ref HEAD) --count -gt 0 ]; then
+
+divergeCount = git rev-list HEAD..origin/$(git rev-parse --abbrev-ref HEAD)
+
+if [ $divergeCount -gt 0 ]; then
     echo "Branch has diverged, not pulling"
 else
     git pull origin master
