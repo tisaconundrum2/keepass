@@ -1,6 +1,10 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-git pull origin master
-git add . 
-git commit -m "Auto commit" 
-git push origin master
+
+while true; do
+  git pull origin master
+  git add .
+  git commit -m "Auto commit"
+  git push origin master
+  sleep 300
+done
