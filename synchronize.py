@@ -2,6 +2,8 @@ import subprocess
 import os
 from pykeepass import PyKeePass
 from dotenv import load_dotenv
+
+# Load environment variables from a .env file
 load_dotenv()
 
 # Function to run a shell command and get the output
@@ -24,16 +26,19 @@ def get_changed_files(commit_hash):
     files = run_shell_command(command)
     return files.split('\n') if files else []
 
-# Function to update KeePass KDBX files
-def update_keepass_file(file_path):
+# Function to synchronize KeePass KDBX files
+def synchronize_keepass_file(file_path, master_password, master_file_path):
     try:
-        kp = PyKeePass(file_path, password=os.getenv('KEEPASS_PASSWORD'))
-        # Assuming you want to perform specific updates here
-        # For example, updating the last modification time of the database
-        kp.save()
-        print(f"Updated KeePass file: {file_path}")
+        kp = PyKeePass(file_path, password=master_password)
+        if os.path.exists(master_file_path):
+            kp_master = PyKeePass(master_file_path, password=master_password)
+            kp_master.merge(kp, sync=True)
+            kp_master.save()
+            print(f"Synchronized KeePass file: {file_path} with master file: {master_file_path}")
+        else:
+            print(f"Master file does not exist: {master_file_path}")
     except Exception as e:
-        print(f"Failed to update KeePass file '{file_path}': {e}")
+        print(f"Failed to synchronize KeePass file '{file_path}': {e}")
 
 def main():
     commits = get_last_commits()
@@ -45,9 +50,14 @@ def main():
             if file.endswith('.kdbx'):
                 kdbx_files.add(file)
     
+    # Retrieve the KeePass password from environment variables
+    master_password = os.getenv('KEEPASS_PASSWORD')
+    # Specify the path to the master KeePass file
+    master_file_path = os.getenv('MASTER_KEEPASS_PATH')
+
     for kdbx_file in kdbx_files:
         if os.path.exists(kdbx_file):
-            update_keepass_file(kdbx_file)
+            synchronize_keepass_file(kdbx_file, master_password, master_file_path)
         else:
             print(f"File does not exist: {kdbx_file}")
 
