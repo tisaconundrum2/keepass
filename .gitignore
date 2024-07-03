@@ -1,3 +1,4 @@
 TEMP/*
 *.DS_Store
 auto_commit.log
+.env
