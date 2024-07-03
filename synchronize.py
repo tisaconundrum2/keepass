@@ -27,7 +27,7 @@ def get_changed_files(commit_hash):
 # Function to update KeePass KDBX files
 def update_keepass_file(file_path):
     try:
-        kp = PyKeePass(file_path, password=os.getenv('KEEPASS_PASSWORD')
+        kp = PyKeePass(file_path, password=os.getenv('KEEPASS_PASSWORD'))
         # Assuming you want to perform specific updates here
         # For example, updating the last modification time of the database
         kp.save()
