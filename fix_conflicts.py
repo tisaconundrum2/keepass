@@ -1,27 +1,28 @@
 import subprocess
 import os
+import getpass
 from pykeepass import PyKeePass
-from dotenv import load_dotenv
 
-# Load environment variables from a .env file
-load_dotenv()
 
-# Function to run a shell command and get the output
 def run_shell_command(command):
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+    """Function to run a shell command and get the output"""
+    result = subprocess.run(command, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, shell=True, text=True)
     if result.returncode != 0:
         print(f"Error running command '{command}': {result.stderr}")
         return None
     return result.stdout.strip()
 
-# Function to get files with merge conflicts
+
 def get_conflicted_files():
+    """Function to get files with merge conflicts"""
     command = "git diff --name-only --diff-filter=U"
     files = run_shell_command(command)
     return files.split('\n') if files else []
 
-# Function to synchronize KeePass KDBX files
+
 def synchronize_keepass_file(file_path, master_password):
+    """Function to synchronize KeePass KDBX files"""
     try:
         # Paths to conflict files
         local_file_path = f"{file_path}.LOCAL"
@@ -48,6 +49,7 @@ def synchronize_keepass_file(file_path, master_password):
     except Exception as e:
         print(f"Failed to synchronize KeePass file '{file_path}': {e}")
 
+
 def commit_resolved_files(kdbx_files):
     try:
         # Add the resolved files to the staging area
@@ -55,22 +57,21 @@ def commit_resolved_files(kdbx_files):
             run_shell_command(f"git add {file}")
 
         # Commit the changes
-        run_shell_command('git commit -m "Resolved merge conflicts in KeePass KDBX files"')
+        run_shell_command(
+            'git commit -m "Resolved merge conflicts in KeePass KDBX files"')
         print("Successfully committed the resolved merge conflicts.")
     except Exception as e:
         print(f"Failed to commit resolved files: {e}")
 
-def main():
-    # Retrieve the KeePass password from environment variables
-    master_password = os.getenv('KEEPASS_PASSWORD')
 
-    if not master_password:
-        print("Error: KEEPASS_PASSWORD environment variable is not set.")
-        return
+def main():
+    # Prompt the user for the KeePass password
+    master_password = getpass.getpass(prompt="Enter KeePass master password: ")
 
     # Detect files with merge conflicts
     conflicted_files = get_conflicted_files()
-    kdbx_conflicted_files = {file for file in conflicted_files if file.endswith('.kdbx')}
+    kdbx_conflicted_files = {
+        file for file in conflicted_files if file.endswith('.kdbx')}
 
     if kdbx_conflicted_files:
         print("Detected merge conflicts in KeePass files:")
@@ -86,6 +87,7 @@ def main():
         commit_resolved_files(kdbx_conflicted_files)
     else:
         print("No merge conflicts detected in KeePass files.")
+
 
 if __name__ == "__main__":
     main()
