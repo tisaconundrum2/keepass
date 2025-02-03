@@ -3,3 +3,5 @@ TEMP/*
 auto_commit.log
 .env
 encryption_key.key
+blank_database.kdbx
+encrypted_password.bin

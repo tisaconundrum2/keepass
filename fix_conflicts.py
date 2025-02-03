@@ -5,6 +5,7 @@ import getpass
 from pathlib import Path
 from pykeepass import PyKeePass
 import win32crypt  # For DPAPI
+from utils.pykeepass_merge import merge_databases
 
 
 def run_shell_command(command):
@@ -46,7 +47,7 @@ def synchronize_keepass_file(temp_file, current_file, master_password):
         kp_current = PyKeePass(current_file, password=master_password)
 
         # Merge the changes from the TEMP file into the current file
-        kp_current.merge(kp_temp, sync=True)
+        merge_databases(kp_temp, kp_current)
 
         # Save the merged database
         kp_current.save(current_file)
