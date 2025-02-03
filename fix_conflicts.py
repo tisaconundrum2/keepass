@@ -4,8 +4,12 @@ import shutil
 import getpass
 from pathlib import Path
 from pykeepass import PyKeePass
-import win32crypt  # For DPAPI
 from utils.pykeepass_merge import merge_databases
+
+if os.name == "nt":
+    import win32crypt
+else:
+    import crypt
 
 
 def run_shell_command(command):
