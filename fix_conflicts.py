@@ -27,8 +27,11 @@ def copy_kdbx_files_to_temp(temp_folder):
 
     os.makedirs(temp_folder, exist_ok=True)
     for kdbx_file in kdbx_files:
-        shutil.copy(kdbx_file, temp_folder)
-        print(f"Copied {kdbx_file} to {temp_folder}")
+        try:
+            shutil.copy(kdbx_file, temp_folder)
+            print(f"Copied {kdbx_file} to {temp_folder}")
+        except Exception as e:
+            print(f"Failed to copy {kdbx_file} to {temp_folder}: {e}")
 
 
 def hard_reset_to_master():
@@ -132,7 +135,7 @@ def main():
     copy_kdbx_files_to_temp(temp_folder)
 
     # Step 2: Hard reset to origin/master
-    hard_reset_to_master()
+    # hard_reset_to_master() TODO uncomment
 
     # Step 3: Sync files from TEMP back to the root directory and synchronize
     sync_files_from_temp(temp_folder, master_password)

@@ -39,18 +39,28 @@ def merge_databases(source_db, target_db):
                 # Handle conflict (e.g., overwrite or skip)
                 print(f"Conflict detected for entry: {source_entry.title}")
                 # Example: Overwrite the target entry with the source entry
-                target_entry.title = source_entry.title
-                target_entry.username = source_entry.title
-                target_entry.password = source_entry.title
-                target_entry.url = source_entry.title
-                target_entry.notes = source_entry.title
-                target_entry.icon = source_entry.title
-                target_entry.tags = source_entry.title
-                target_entry.otp = source_entry.title
-                target_entry.history = source_entry.title
-                target_entry.autotype_enabled = source_entry.title
-                target_entry.autotype_sequence = source_entry.title
-                target_entry.autotype_window = source_entry.title
+                target_entry.title = "" if source_entry.title is None else source_entry.title
+                target_entry.username = "" if source_entry.username is None else source_entry.username
+                target_entry.password = "" if source_entry.password is None else source_entry.password
+                target_entry.url = "" if source_entry.url is None else source_entry.url
+                target_entry.notes = "" if source_entry.notes is None else source_entry.notes
+                target_entry.icon = "" if source_entry.icon is None else source_entry.icon
+                target_entry.tags = "" if source_entry.tags is None else source_entry.tags
+                target_entry.otp = "" if source_entry.otp is None else source_entry.otp
+                try: 
+                    target_entry.autotype_enabled = source_entry.autotype_enabled 
+                except Exception as e:
+                    pass
+                try:
+                    target_entry.autotype_sequence = source_entry.autotype_sequence
+                except Exception as e:
+                    pass
+                try:
+                    target_entry.autotype_window = source_entry.autotype_window
+                except Exception as e:
+                    pass
+                
+                target_entry.history.extend(source_entry.history)
             else:
                 # Add the entry if it doesn't exist
                 """
