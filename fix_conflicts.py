@@ -42,6 +42,14 @@ def hard_reset_to_master():
     print("Hard reset completed.")
 
 
+def add_push_to_origin_master():
+    """Push changes to origin/master."""
+    print("Pushing changes to origin/master...")
+    run_shell_command("git add .")
+    run_shell_command("git commit -m 'Auto commit'")
+    run_shell_command("git push origin master")
+    print("Push completed.")
+
 def synchronize_keepass_file(temp_file, current_file, master_password):
     """Synchronize a KeePass database file."""
     try:
@@ -135,7 +143,7 @@ def main():
     copy_kdbx_files_to_temp(temp_folder)
 
     # Step 2: Hard reset to origin/master
-    # hard_reset_to_master() TODO uncomment
+    hard_reset_to_master()
 
     # Step 3: Sync files from TEMP back to the root directory and synchronize
     sync_files_from_temp(temp_folder, master_password)
@@ -144,6 +152,8 @@ def main():
     shutil.rmtree(temp_folder)
     print(f"Removed temporary folder: {temp_folder}")
 
+    # Step 4: Add and push changes to origin/master
+    add_push_to_origin_master()
 
 if __name__ == "__main__":
     main()
