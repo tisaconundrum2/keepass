@@ -4,7 +4,7 @@ import shutil
 import getpass
 from pathlib import Path
 from pykeepass import PyKeePass
-from cryptography.fernet import Fernet
+import win32crypt  # For DPAPI
 
 
 def run_shell_command(command):
@@ -68,60 +68,48 @@ def sync_files_from_temp(temp_folder, master_password):
             print(f"Copied {temp_file} back to the root directory.")
 
 
-def generate_key():
-    """Generate a key for encryption and save it to a file."""
-    key = Fernet.generate_key()
-    with open("encryption_key.key", "wb") as key_file:
-        key_file.write(key)
-    return key
-
-
-def load_key():
-    """Load the encryption key from a file."""
+def encrypt_with_dpapi(data):
+    """Encrypt data using DPAPI."""
     try:
-        with open("encryption_key.key", "rb") as key_file:
-            return key_file.read()
-    except FileNotFoundError:
+        return win32crypt.CryptProtectData(data.encode(), None, None, None, None, 0)
+    except Exception as e:
+        print(f"Failed to encrypt data with DPAPI: {e}")
         return None
 
 
-def encrypt_password(password, key):
-    """Encrypt the password using the provided key."""
-    f = Fernet(key)
-    encrypted_password = f.encrypt(password.encode())
-    return encrypted_password.decode()
-
-
-def decrypt_password(encrypted_password, key):
-    """Decrypt the password using the provided key."""
-    f = Fernet(key)
-    decrypted_password = f.decrypt(encrypted_password.encode())
-    return decrypted_password.decode()
+def decrypt_with_dpapi(encrypted_data):
+    """Decrypt data using DPAPI."""
+    try:
+        return win32crypt.CryptUnprotectData(encrypted_data, None, None, None, 0)[1].decode()
+    except Exception as e:
+        print(f"Failed to decrypt data with DPAPI: {e}")
+        return None
 
 
 def save_password_to_file(encrypted_password):
     """Save the encrypted password to a file."""
-    with open("encrypted_password.txt", "w") as password_file:
-        password_file.write(encrypted_password)
-    print("Encrypted password saved to file.")
+    try:
+        with open("encrypted_password.bin", "wb") as password_file:
+            password_file.write(encrypted_password)
+        print("Encrypted password saved to file.")
+    except Exception as e:
+        print(f"Failed to save encrypted password to file: {e}")
 
 
 def get_password_from_file():
     """Retrieve the encrypted password from a file."""
     try:
-        with open("encrypted_password.txt", "r") as password_file:
+        with open("encrypted_password.bin", "rb") as password_file:
             return password_file.read()
     except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Failed to retrieve encrypted password from file: {e}")
         return None
 
 
 def main():
     temp_folder = "TEMP"
-
-    # Load or generate the encryption key
-    key = load_key()
-    if not key:
-        key = generate_key()
 
     # Retrieve the encrypted password from the file
     encrypted_password = get_password_from_file()
@@ -129,10 +117,15 @@ def main():
     # If the password is not found in the file, prompt the user
     if not encrypted_password:
         master_password = getpass.getpass(prompt="Enter KeePass master password: ")
-        encrypted_password = encrypt_password(master_password, key)
-        save_password_to_file(encrypted_password)
+        encrypted_password = encrypt_with_dpapi(master_password)
+        if encrypted_password:
+            save_password_to_file(encrypted_password)
     else:
-        master_password = decrypt_password(encrypted_password, key)
+        master_password = decrypt_with_dpapi(encrypted_password)
+
+    if not master_password:
+        print("Failed to retrieve or decrypt the master password.")
+        return
 
     # Step 1: Copy all .kdbx files to TEMP
     copy_kdbx_files_to_temp(temp_folder)
