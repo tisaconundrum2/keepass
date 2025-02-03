@@ -1,11 +1,16 @@
 import subprocess
 import os
+import shutil
 import getpass
+from pathlib import Path
 from pykeepass import PyKeePass
+import winreg
+from cryptography.fernet import Fernet
+import base64
 
 
 def run_shell_command(command):
-    """Function to run a shell command and get the output"""
+    """Function to run a shell command and get the output."""
     result = subprocess.run(command, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, shell=True, text=True)
     if result.returncode != 0:
@@ -14,79 +19,144 @@ def run_shell_command(command):
     return result.stdout.strip()
 
 
-def get_conflicted_files():
-    """Function to get files with merge conflicts"""
-    command = "git diff --name-only --diff-filter=U"
-    files = run_shell_command(command)
-    return files.split('\n') if files else []
+def copy_kdbx_files_to_temp(temp_folder):
+    """Copy all .kdbx files to the TEMP folder."""
+    kdbx_files = list(Path(".").rglob("*.kdbx"))
+    if not kdbx_files:
+        print("No .kdbx files found.")
+        return
+
+    os.makedirs(temp_folder, exist_ok=True)
+    for kdbx_file in kdbx_files:
+        shutil.copy(kdbx_file, temp_folder)
+        print(f"Copied {kdbx_file} to {temp_folder}")
 
 
-def synchronize_keepass_file(file_path, master_password):
-    """Function to synchronize KeePass KDBX files"""
+def hard_reset_to_master():
+    """Perform a hard reset to origin/master."""
+    print("Performing hard reset to origin/master...")
+    run_shell_command("git fetch origin")
+    run_shell_command("git reset --hard origin/master")
+    print("Hard reset completed.")
+
+
+def synchronize_keepass_file(temp_file, current_file, master_password):
+    """Synchronize a KeePass database file."""
     try:
-        # Paths to conflict files
-        local_file_path = f"{file_path}.LOCAL"
-        remote_file_path = f"{file_path}.REMOTE"
-        base_file_path = f"{file_path}.BASE"
+        # Open the databases
+        kp_temp = PyKeePass(temp_file, password=master_password)
+        kp_current = PyKeePass(current_file, password=master_password)
 
-        # Open the conflicting databases
-        kp_local = PyKeePass(local_file_path, password=master_password)
-        kp_remote = PyKeePass(remote_file_path, password=master_password)
-        kp_base = PyKeePass(base_file_path, password=master_password)
-
-        # Merge the remote changes into the local database
-        kp_local.merge(kp_remote, sync=True)
+        # Merge the changes from the TEMP file into the current file
+        kp_current.merge(kp_temp, sync=True)
 
         # Save the merged database
-        kp_local.save(file_path)
-        print(f"Synchronized KeePass file: {file_path}")
-
-        # Cleanup conflict files
-        os.remove(local_file_path)
-        os.remove(remote_file_path)
-        os.remove(base_file_path)
+        kp_current.save(current_file)
+        print(f"Synchronized KeePass file: {current_file}")
 
     except Exception as e:
-        print(f"Failed to synchronize KeePass file '{file_path}': {e}")
+        print(f"Failed to synchronize KeePass file '{current_file}': {e}")
 
 
-def commit_resolved_files(kdbx_files):
+def sync_files_from_temp(temp_folder, master_password):
+    """Sync files from TEMP folder back to the root directory and synchronize."""
+    for temp_file in Path(temp_folder).rglob("*.kdbx"):
+        current_file = Path(".") / temp_file.name
+        if current_file.exists():
+            print(f"Synchronizing {temp_file} with {current_file}...")
+            synchronize_keepass_file(temp_file, current_file, master_password)
+        else:
+            shutil.copy(temp_file, ".")
+            print(f"Copied {temp_file} back to the root directory.")
+
+
+def generate_key():
+    """Generate a key for encryption and save it to a file."""
+    key = Fernet.generate_key()
+    with open("encryption_key.key", "wb") as key_file:
+        key_file.write(key)
+    return key
+
+
+def load_key():
+    """Load the encryption key from a file."""
     try:
-        # Add the resolved files to the staging area
-        for file in kdbx_files:
-            run_shell_command(f"git add {file}")
+        with open("encryption_key.key", "rb") as key_file:
+            return key_file.read()
+    except FileNotFoundError:
+        return None
 
-        # Commit the changes
-        run_shell_command(
-            'git commit -m "Resolved merge conflicts in KeePass KDBX files"')
-        print("Successfully committed the resolved merge conflicts.")
+
+def encrypt_password(password, key):
+    """Encrypt the password using the provided key."""
+    f = Fernet(key)
+    encrypted_password = f.encrypt(password.encode())
+    return encrypted_password.decode()
+
+
+def decrypt_password(encrypted_password, key):
+    """Decrypt the password using the provided key."""
+    f = Fernet(key)
+    decrypted_password = f.decrypt(encrypted_password.encode())
+    return decrypted_password.decode()
+
+
+def save_password_to_registry(encrypted_password):
+    """Save the encrypted password to the Windows Registry."""
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\KeePassSync")
+        winreg.SetValueEx(key, "MasterPassword", 0, winreg.REG_SZ, encrypted_password)
+        winreg.CloseKey(key)
+        print("Encrypted password saved to the Windows Registry.")
     except Exception as e:
-        print(f"Failed to commit resolved files: {e}")
+        print(f"Failed to save password to the Windows Registry: {e}")
+
+
+def get_password_from_registry():
+    """Retrieve the encrypted password from the Windows Registry."""
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\KeePassSync")
+        encrypted_password, _ = winreg.QueryValueEx(key, "MasterPassword")
+        winreg.CloseKey(key)
+        return encrypted_password
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Failed to retrieve password from the Windows Registry: {e}")
+        return None
 
 
 def main():
-    # Prompt the user for the KeePass password
-    master_password = getpass.getpass(prompt="Enter KeePass master password: ")
+    temp_folder = "TEMP"
 
-    # Detect files with merge conflicts
-    conflicted_files = get_conflicted_files()
-    kdbx_conflicted_files = {
-        file for file in conflicted_files if file.endswith('.kdbx')}
+    # Load or generate the encryption key
+    key = load_key()
+    if not key:
+        key = generate_key()
 
-    if kdbx_conflicted_files:
-        print("Detected merge conflicts in KeePass files:")
-        for kdbx_file in kdbx_conflicted_files:
-            kdbx_file_path = os.path.join(os.getcwd(), kdbx_file)
-            if os.path.exists(kdbx_file_path):
-                print(f"Synchronizing KeePass file: {kdbx_file_path}")
-                synchronize_keepass_file(kdbx_file_path, master_password)
-            else:
-                print(f"File does not exist: {kdbx_file_path}")
+    # Retrieve the encrypted password from the Windows Registry
+    encrypted_password = get_password_from_registry()
 
-        # Commit the resolved files
-        commit_resolved_files(kdbx_conflicted_files)
+    # If the password is not found in the registry, prompt the user
+    if not encrypted_password:
+        master_password = getpass.getpass(prompt="Enter KeePass master password: ")
+        encrypted_password = encrypt_password(master_password, key)
+        save_password_to_registry(encrypted_password)
     else:
-        print("No merge conflicts detected in KeePass files.")
+        master_password = decrypt_password(encrypted_password, key)
+
+    # Step 1: Copy all .kdbx files to TEMP
+    copy_kdbx_files_to_temp(temp_folder)
+
+    # Step 2: Hard reset to origin/master
+    hard_reset_to_master()
+
+    # Step 3: Sync files from TEMP back to the root directory and synchronize
+    sync_files_from_temp(temp_folder, master_password)
+
+    # Cleanup: Remove the TEMP folder
+    shutil.rmtree(temp_folder)
+    print(f"Removed temporary folder: {temp_folder}")
 
 
 if __name__ == "__main__":
