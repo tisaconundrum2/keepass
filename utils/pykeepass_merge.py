@@ -40,25 +40,34 @@ def merge_databases(source_db, target_db):
                 print(f"Conflict detected for entry: {source_entry.title}")
                 # Example: Overwrite the target entry with the source entry
                 target_entry.title = source_entry.title
-                target_entry.username = source_entry.username
-                target_entry.password = source_entry.password
-                target_entry.url = source_entry.url
-                target_entry.notes = source_entry.notes
-                target_entry.expiry_time = source_entry.expiry_time
-                target_entry.tags = source_entry.tags
-                target_entry.icon = source_entry.icon
+                target_entry.username = source_entry.title
+                target_entry.password = source_entry.title
+                target_entry.url = source_entry.title
+                target_entry.notes = source_entry.title
+                target_entry.icon = source_entry.title
+                target_entry.tags = source_entry.title
+                target_entry.otp = source_entry.title
+                target_entry.history = source_entry.title
+                target_entry.autotype_enabled = source_entry.title
+                target_entry.autotype_sequence = source_entry.title
+                target_entry.autotype_window = source_entry.title
             else:
                 # Add the entry if it doesn't exist
+                """
+                    def add_entry(self, destination_group, title, username,
+                                password, url=None, notes=None, expiry_time=None,
+                                tags=None, otp=None, icon=None, force_creation=False):
+                """                
                 target_db.add_entry(
                     target_group,
-                    source_entry.title,
-                    source_entry.username,
-                    source_entry.password,
-                    url=source_entry.url,
-                    notes=source_entry.notes,
-                    expiry_time=source_entry.expiry_time,
-                    tags=source_entry.tags,
-                    icon=source_entry.icon,
+                    title = source_entry.title,
+                    username = source_entry.username,
+                    password = source_entry.password,
+                    url = source_entry.url,
+                    notes = source_entry.notes,
+                    icon = source_entry.icon,
+                    tags = source_entry.tags,
+                    otp = source_entry.otp,
                     force_creation=True
                 )
 
