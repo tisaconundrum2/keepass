@@ -4,9 +4,7 @@ import shutil
 import getpass
 from pathlib import Path
 from pykeepass import PyKeePass
-import winreg
 from cryptography.fernet import Fernet
-import base64
 
 
 def run_shell_command(command):
@@ -101,28 +99,19 @@ def decrypt_password(encrypted_password, key):
     return decrypted_password.decode()
 
 
-def save_password_to_registry(encrypted_password):
-    """Save the encrypted password to the Windows Registry."""
-    try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\KeePassSync")
-        winreg.SetValueEx(key, "MasterPassword", 0, winreg.REG_SZ, encrypted_password)
-        winreg.CloseKey(key)
-        print("Encrypted password saved to the Windows Registry.")
-    except Exception as e:
-        print(f"Failed to save password to the Windows Registry: {e}")
+def save_password_to_file(encrypted_password):
+    """Save the encrypted password to a file."""
+    with open("encrypted_password.txt", "w") as password_file:
+        password_file.write(encrypted_password)
+    print("Encrypted password saved to file.")
 
 
-def get_password_from_registry():
-    """Retrieve the encrypted password from the Windows Registry."""
+def get_password_from_file():
+    """Retrieve the encrypted password from a file."""
     try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\KeePassSync")
-        encrypted_password, _ = winreg.QueryValueEx(key, "MasterPassword")
-        winreg.CloseKey(key)
-        return encrypted_password
+        with open("encrypted_password.txt", "r") as password_file:
+            return password_file.read()
     except FileNotFoundError:
-        return None
-    except Exception as e:
-        print(f"Failed to retrieve password from the Windows Registry: {e}")
         return None
 
 
@@ -134,14 +123,14 @@ def main():
     if not key:
         key = generate_key()
 
-    # Retrieve the encrypted password from the Windows Registry
-    encrypted_password = get_password_from_registry()
+    # Retrieve the encrypted password from the file
+    encrypted_password = get_password_from_file()
 
-    # If the password is not found in the registry, prompt the user
+    # If the password is not found in the file, prompt the user
     if not encrypted_password:
         master_password = getpass.getpass(prompt="Enter KeePass master password: ")
         encrypted_password = encrypt_password(master_password, key)
-        save_password_to_registry(encrypted_password)
+        save_password_to_file(encrypted_password)
     else:
         master_password = decrypt_password(encrypted_password, key)
 
