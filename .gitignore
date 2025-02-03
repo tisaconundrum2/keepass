@@ -5,3 +5,4 @@ auto_commit.log
 encryption_key.key
 blank_database.kdbx
 encrypted_password.bin
+*.pyc
