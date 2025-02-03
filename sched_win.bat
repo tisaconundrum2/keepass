@@ -1,11 +1,11 @@
 @echo off
-REM Create a scheduled task to run the auto_commit.sh script every 30 minutes upon logging in
+REM Create a scheduled task to run the auto_commit.py script every 30 minutes upon logging in
 
 REM Define the task name
 set TaskName=AutoCommitKeepass
 
 REM Define the script path
-set ScriptPath=C:\repos\keepass\auto_commit.sh
+set ScriptPath=C:\repos\keepass\.venv\Scripts\python.exe C:\repos\keepass\auto_commit.py
 
 REM Create the scheduled task to run every 30 minutes
 schtasks /create /tn %TaskName% /tr "%ScriptPath%" /sc minute /mo 30 /ru %username% /it /f
