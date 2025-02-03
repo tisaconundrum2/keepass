@@ -2,3 +2,4 @@ TEMP/*
 *.DS_Store
 auto_commit.log
 .env
+encryption_key.key
