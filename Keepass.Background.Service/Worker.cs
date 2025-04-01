@@ -22,8 +22,8 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Run the file watcher initialization on a separate thread
-        await Task.Run(() => InitializeFileWatcher(), stoppingToken);
+
+        InitializeFileWatcher();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -39,7 +39,6 @@ public class Worker : BackgroundService
                 _logger.LogError(ex, "Error occurred while performing Git operations.");
             }
 
-            // Wait asynchronously to avoid blocking the thread
             await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
         }
     }
