@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/Keepass.Background.Service/bin/Debug/net8.0/Keepass.Background.Service.dll",
+            "program": "${workspaceFolder}/Keepass.Background.Service/bin/Debug/net8.0-windows/win-x64/Keepass.Background.Service.dll",
             "args": [],
             "cwd": "${workspaceFolder}/Keepass.Background.Service",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
