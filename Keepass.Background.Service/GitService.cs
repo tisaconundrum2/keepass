@@ -7,10 +7,12 @@ namespace Keepass.Background.Service
     {
         private readonly ILogger<GitService> _logger;
         private readonly FileSystemWatcher _fileWatcher;
+        private readonly IConfiguration _configuration;
         private readonly Repository _repository;
 
-        public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, Repository repository)
+        public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, IConfiguration configuration, Repository repository)
         {
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _fileWatcher = fileWatcher;
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger;
@@ -72,7 +74,11 @@ namespace Keepass.Background.Service
                     var pushOptions = new PushOptions
                     {
                         CredentialsProvider = (url, usernameFromUrl, types) =>
-                            new DefaultCredentials()
+                            new UsernamePasswordCredentials
+                            {
+                                Username = _configuration["Git:Username"],
+                                Password = _configuration["Git:Password"]
+                            }
                     };
                     _repository.Network.Push(remote, "refs/heads/master", pushOptions);
                 }
