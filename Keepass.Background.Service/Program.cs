@@ -1,4 +1,5 @@
 using Keepass.Background.Service;
+using LibGit2Sharp;
 using Microsoft.Extensions.Logging.Configuration;
 using Microsoft.Extensions.Logging.EventLog;
 
@@ -12,12 +13,8 @@ builder.Services.AddWindowsService(options =>
 LoggerProviderOptions.RegisterProviderOptions<
     EventLogSettings, EventLogLoggerProvider>(builder.Services);
 
-builder.Services.AddSingleton(sp => 
-{
-    var configuration = sp.GetRequiredService<IConfiguration>();
-    var repoPath = configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
-    return new FileSystemWatcher(repoPath);
-});
+builder.Services.AddSingleton<FileSystemWatcher>();
+builder.Services.AddSingleton<Repository>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddHostedService<Worker>();
 

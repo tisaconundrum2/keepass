@@ -2,8 +2,7 @@ namespace Keepass.Background.Service;
 
 public class Worker(
     GitService gitService,
-    ILogger<Worker> logger,
-    IConfiguration configuration
+    ILogger<Worker> logger
 ) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

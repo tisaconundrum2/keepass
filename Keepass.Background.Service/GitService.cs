@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using LibGit2Sharp;
 
 namespace Keepass.Background.Service
 {
@@ -7,16 +8,19 @@ namespace Keepass.Background.Service
         private readonly string _repoPath;
         private readonly ILogger<GitService> _logger;
         private readonly FileSystemWatcher _fileWatcher;
+        private readonly Repository _repository;
 
-        public GitService(ILogger<GitService> logger, IConfiguration configuration, FileSystemWatcher fileWatcher)
+        public GitService(ILogger<GitService> logger, IConfiguration configuration, FileSystemWatcher fileWatcher, Repository repository)
         {
             _fileWatcher = fileWatcher;
             _repoPath = configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger;
         }
 
         public void InitializeFileWatcher()
         {
+            _fileWatcher.Path = _repoPath;
             _fileWatcher.NotifyFilter = NotifyFilters.Attributes
                                      | NotifyFilters.CreationTime
                                      | NotifyFilters.DirectoryName
@@ -37,35 +41,42 @@ namespace Keepass.Background.Service
         {
             try
             {
-                var processStartInfo = new ProcessStartInfo
+                Commands.Checkout(_repository, "master");
+                _logger.LogInformation("Checked out to master branch.");
+                var PullOptions = new PullOptions
                 {
-                    FileName = "cmd",
-                    Arguments = "/c auto_commit.bat",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = _repoPath
+                    MergeOptions = new MergeOptions
+                    {
+                        FastForwardStrategy = FastForwardStrategy.Default
+                    }
                 };
 
-                using var process = new Process { StartInfo = processStartInfo };
-                process.Start();
+                var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                Commands.Pull(_repository, signature, PullOptions);
 
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                Commands.Stage(_repository, "*");
+                _logger.LogInformation("Staged all changes.");
 
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
+                if (_repository.RetrieveStatus().IsDirty)
                 {
-                    throw new InvalidOperationException($"Command execution failed: {error}");
-                }
+                    var commitMessage = $"Auto-commit at {DateTime.Now}";
+                    var commitSignature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                    _repository.Commit(commitMessage, commitSignature, commitSignature);
+                    _logger.LogInformation("Committed changes with message: {commitMessage}", commitMessage);
 
-                _logger.LogInformation("Command executed successfully: {output}", output);
+                    var remote = _repository.Network.Remotes["origin"];
+                    var pushOptions = new PushOptions
+                    {
+                        CredentialsProvider = (url, usernameFromUrl, types) =>
+                            new DefaultCredentials()
+                    };
+                    _repository.Network.Push(remote, "refs/heads/master", pushOptions);
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogError(ex, "Error occurred while executing auto_commit.bat.");
+                _logger.LogError("An error occurred while executing auto-commit.");
+                throw;
             }
         }
 
