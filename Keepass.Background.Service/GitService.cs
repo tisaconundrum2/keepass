@@ -9,6 +9,7 @@ namespace Keepass.Background.Service
         private readonly FileSystemWatcher _fileWatcher;
         private readonly IConfiguration _configuration;
         private readonly Repository _repository;
+        private readonly object _lock = new object();
 
         public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, IConfiguration configuration, Repository repository)
         {
@@ -38,55 +39,64 @@ namespace Keepass.Background.Service
 
         public void ExecuteAutoCommit()
         {
-            try
+            lock (_lock)
             {
-                Commands.Checkout(_repository, "master");
-                _logger.LogInformation("Checked out to master branch.");
-
-                // Fetch changes from remote
-                var remote = _repository.Network.Remotes["origin"];
-                Commands.Fetch(_repository, remote.Name, Array.Empty<string>(), null, null);
-
-                // Get the remote tracking branch
-                var trackingBranch = _repository.Head.TrackedBranch;
-                if (trackingBranch != null)
+                try
                 {
-                    // Merge the remote changes
-                    var mergeOptions = new MergeOptions
+                    Commands.Checkout(_repository, "master");
+                    _logger.LogInformation("Checked out to master branch.");
+
+                    // Fetch changes from remote
+                    var remote = _repository.Network.Remotes["origin"];
+                    Commands.Fetch(_repository, remote.Name, Array.Empty<string>(), null, null);
+
+                    // Get the remote tracking branch
+                    var trackingBranch = _repository.Head.TrackedBranch;
+                    if (trackingBranch != null)
                     {
-                        FastForwardStrategy = FastForwardStrategy.Default
-                    };
+                        // Merge the remote changes
+                        var mergeOptions = new MergeOptions
+                        {
+                            FastForwardStrategy = FastForwardStrategy.Default
+                        };
 
-                    var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
-                    var result = _repository.Merge(trackingBranch, signature, mergeOptions);
+                        var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                        var result = _repository.Merge(trackingBranch, signature, mergeOptions);
+                    }
+
+                    Commands.Stage(_repository, "*");
+                    _logger.LogInformation("Staged all changes.");
+
+                    if (_repository.RetrieveStatus().IsDirty)
+                    {
+                        var commitMessage = $"Auto-commit at {DateTime.Now}";
+                        var commitSignature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                        _repository.Commit(commitMessage, commitSignature, commitSignature);
+                        _logger.LogInformation("Committed changes with message: {commitMessage}", commitMessage);
+
+                        var pushOptions = new PushOptions
+                        {
+                            CredentialsProvider = (url, usernameFromUrl, types) =>
+                                new UsernamePasswordCredentials
+                                {
+                                    Username = _configuration["Git:Username"],
+                                    Password = _configuration["Git:Password"]
+                                }
+                        };
+                        _repository.Network.Push(remote, "refs/heads/master", pushOptions);
+                    }
                 }
-
-                Commands.Stage(_repository, "*");
-                _logger.LogInformation("Staged all changes.");
-
-                if (_repository.RetrieveStatus().IsDirty)
+                catch (LibGit2Sharp.LockedFileException ex)
                 {
-                    var commitMessage = $"Auto-commit at {DateTime.Now}";
-                    var commitSignature = _repository.Config.BuildSignature(DateTimeOffset.Now);
-                    _repository.Commit(commitMessage, commitSignature, commitSignature);
-                    _logger.LogInformation("Committed changes with message: {commitMessage}", commitMessage);
-
-                    var pushOptions = new PushOptions
-                    {
-                        CredentialsProvider = (url, usernameFromUrl, types) =>
-                            new UsernamePasswordCredentials
-                            {
-                                Username = _configuration["Git:Username"],
-                                Password = _configuration["Git:Password"]
-                            }
-                    };
-                    _repository.Network.Push(remote, "refs/heads/master", pushOptions);
+                    _logger.LogWarning(ex, "The Git index is locked. Retrying...");
+                    Thread.Sleep(1000); // Wait for 1 second before retrying
+                    ExecuteAutoCommit(); // Retry the operation
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while executing auto-commit.");
-                throw;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "An error occurred while executing auto-commit.");
+                    throw;
+                }
             }
         }
 
