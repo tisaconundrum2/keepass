@@ -10,16 +10,16 @@ public class Worker(
     {
 
         gitService.InitializeFileWatcher();
-        logger.LogInformation("File watcher initialized at: {time}", DateTimeOffset.Now);
+        logger.LogWarning("File watcher initialized at: {time}", DateTimeOffset.Now);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+            logger.LogWarning("Worker running at: {time}", DateTimeOffset.Now);
 
             try
             {
                 gitService.ExecuteAutoCommit();
-                logger.LogInformation("Git operations completed successfully at: {time}", DateTimeOffset.Now);
+                logger.LogWarning("Git operations completed successfully at: {time}", DateTimeOffset.Now);
             }
             catch (Exception ex)
             {
