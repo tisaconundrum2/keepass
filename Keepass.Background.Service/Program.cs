@@ -13,8 +13,10 @@ builder.Services.AddWindowsService(options =>
 LoggerProviderOptions.RegisterProviderOptions<
     EventLogSettings, EventLogLoggerProvider>(builder.Services);
 
-builder.Services.AddSingleton<FileSystemWatcher>();
-builder.Services.AddSingleton<Repository>();
+var repoPath = builder.Configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
+
+builder.Services.AddSingleton(sp => new FileSystemWatcher(repoPath));
+builder.Services.AddSingleton(sp => new Repository(repoPath));
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddHostedService<Worker>();
 

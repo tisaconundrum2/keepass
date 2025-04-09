@@ -5,22 +5,19 @@ namespace Keepass.Background.Service
 {
     public class GitService
     {
-        private readonly string _repoPath;
         private readonly ILogger<GitService> _logger;
         private readonly FileSystemWatcher _fileWatcher;
         private readonly Repository _repository;
 
-        public GitService(ILogger<GitService> logger, IConfiguration configuration, FileSystemWatcher fileWatcher, Repository repository)
+        public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, Repository repository)
         {
             _fileWatcher = fileWatcher;
-            _repoPath = configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger;
         }
 
         public void InitializeFileWatcher()
         {
-            _fileWatcher.Path = _repoPath;
             _fileWatcher.NotifyFilter = NotifyFilters.Attributes
                                      | NotifyFilters.CreationTime
                                      | NotifyFilters.DirectoryName
@@ -43,16 +40,24 @@ namespace Keepass.Background.Service
             {
                 Commands.Checkout(_repository, "master");
                 _logger.LogInformation("Checked out to master branch.");
-                var PullOptions = new PullOptions
+
+                // Fetch changes from remote
+                var remote = _repository.Network.Remotes["origin"];
+                Commands.Fetch(_repository, remote.Name, Array.Empty<string>(), null, null);
+
+                // Get the remote tracking branch
+                var trackingBranch = _repository.Head.TrackedBranch;
+                if (trackingBranch != null)
                 {
-                    MergeOptions = new MergeOptions
+                    // Merge the remote changes
+                    var mergeOptions = new MergeOptions
                     {
                         FastForwardStrategy = FastForwardStrategy.Default
-                    }
-                };
+                    };
 
-                var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
-                Commands.Pull(_repository, signature, PullOptions);
+                    var signature = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                    var result = _repository.Merge(trackingBranch, signature, mergeOptions);
+                }
 
                 Commands.Stage(_repository, "*");
                 _logger.LogInformation("Staged all changes.");
@@ -64,7 +69,6 @@ namespace Keepass.Background.Service
                     _repository.Commit(commitMessage, commitSignature, commitSignature);
                     _logger.LogInformation("Committed changes with message: {commitMessage}", commitMessage);
 
-                    var remote = _repository.Network.Remotes["origin"];
                     var pushOptions = new PushOptions
                     {
                         CredentialsProvider = (url, usernameFromUrl, types) =>
@@ -73,9 +77,9 @@ namespace Keepass.Background.Service
                     _repository.Network.Push(remote, "refs/heads/master", pushOptions);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                _logger.LogError("An error occurred while executing auto-commit.");
+                _logger.LogError(ex, "An error occurred while executing auto-commit.");
                 throw;
             }
         }
