@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using LibGit2Sharp;
 
 namespace Keepass.Background.Service
@@ -86,7 +85,7 @@ namespace Keepass.Background.Service
                         _repository.Network.Push(remote, "refs/heads/master", pushOptions);
                     }
                 }
-                catch (LibGit2Sharp.LockedFileException ex)
+                catch (LockedFileException ex)
                 {
                     _logger.LogWarning(ex, "The Git index is locked. Retrying...");
                     Thread.Sleep(1000); // Wait for 1 second before retrying
