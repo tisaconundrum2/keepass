@@ -16,18 +16,18 @@ setup_cron() {
 
 perform_git_operations() {
     cd "$(dirname "$0")"
-    git checkout master
-    git pull
+    git checkout schultztechnology
+    git pull origin schultztechnology
 
     # Check for conflicts
-    if ! git pull; then
+    if ! git pull origin schultztechnology; then
         echo "Git conflict detected. No actions taken." > auto_commit.log
         exit 1
     fi
 
     git add .
     git commit -m "Auto commit"
-    git push
+    git push origin schultztechnology
     echo "Auto commit done at $(date)" > auto_commit.log
 }
 
