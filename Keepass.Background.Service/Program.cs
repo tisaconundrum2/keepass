@@ -5,6 +5,10 @@ using Microsoft.Extensions.Logging.EventLog;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+builder.Configuration.AddJsonFile("../appsettings.json", optional: false, reloadOnChange: true)
+                     .AddEnvironmentVariables()
+                     .AddCommandLine(args);
+
 builder.Services.AddWindowsService(options =>
 {
     options.ServiceName = "Keepass Background Service";
