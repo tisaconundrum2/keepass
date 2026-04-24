@@ -9,13 +9,15 @@ namespace Keepass.Background.Service
         private readonly FileSystemWatcher _fileWatcher;
         private readonly IConfiguration _configuration;
         private readonly Repository _repository;
+        private readonly KeePassMergeService _mergeService;
         private readonly object _lock = new object();
 
-        public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, IConfiguration configuration, Repository repository)
+        public GitService(ILogger<GitService> logger, FileSystemWatcher fileWatcher, IConfiguration configuration, Repository repository, KeePassMergeService mergeService)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _fileWatcher = fileWatcher;
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _mergeService = mergeService;
             _logger = logger;
         }
 
@@ -64,6 +66,9 @@ namespace Keepass.Background.Service
                         var result = _repository.Merge(trackingBranch, signature, mergeOptions);
                     }
 
+                    // Merge any kdbx files that have remote changes
+                    MergeKeePassDatabases();
+
                     Commands.Stage(_repository, "*");
                     _logger.LogInformation("Staged all changes.");
 
@@ -105,6 +110,29 @@ namespace Keepass.Background.Service
             // Handle file changes and trigger auto-commit if necessary
             _logger.LogInformation("File changed: {fileName}", e.FullPath);
             ExecuteAutoCommit();
+        }
+
+        private void MergeKeePassDatabases()
+        {
+            var repoRoot = _repository.Info.WorkingDirectory;
+            var kdbxFiles = Directory.GetFiles(repoRoot, "*.kdbx", SearchOption.AllDirectories);
+
+            foreach (var kdbxFile in kdbxFiles)
+            {
+                // Check if this file has changes from the remote merge
+                var relativePath = Path.GetRelativePath(repoRoot, kdbxFile);
+                var status = _repository.RetrieveStatus(relativePath);
+
+                if (status == LibGit2Sharp.FileStatus.ModifiedInWorkdir || status == LibGit2Sharp.FileStatus.Conflicted)
+                {
+                    _logger.LogInformation("Detected changes in {File}, attempting KeePass merge", relativePath);
+
+                    // Create a temp copy of the current working file before the git merge overwrote it
+                    // Since git merge already happened, we use the merged file as the "remote" version
+                    // and rely on KeePass MergeIn to reconcile entries
+                    _mergeService.MergeDatabase(kdbxFile, kdbxFile);
+                }
+            }
         }
     }
 }
