@@ -45,8 +45,8 @@ namespace Keepass.Background.Service
             {
                 try
                 {
-                    Commands.Checkout(_repository, "master");
-                    _logger.LogInformation("Checked out to master branch.");
+                    var currentBranch = _repository.Head.FriendlyName;
+                    _logger.LogInformation("Running auto-commit on branch: {Branch}", currentBranch);
 
                     // Fetch changes from remote
                     var remote = _repository.Network.Remotes["origin"];
@@ -66,8 +66,11 @@ namespace Keepass.Background.Service
                         var result = _repository.Merge(trackingBranch, signature, mergeOptions);
                     }
 
-                    // Merge any kdbx files that have remote changes
-                    MergeKeePassDatabases();
+                    // Merge any kdbx files that differ from the remote tracking branch
+                    if (trackingBranch != null)
+                    {
+                        MergeKeePassDatabasesFromRef(trackingBranch.FriendlyName);
+                    }
 
                     Commands.Stage(_repository, "*");
                     _logger.LogInformation("Staged all changes.");
@@ -88,7 +91,7 @@ namespace Keepass.Background.Service
                                     Password = _configuration["Git:Password"]
                                 }
                         };
-                        _repository.Network.Push(remote, "refs/heads/master", pushOptions);
+                        _repository.Network.Push(remote, $"refs/heads/{currentBranch}", pushOptions);
                     }
                 }
                 catch (LibGit2Sharp.LockedFileException ex)
@@ -112,25 +115,103 @@ namespace Keepass.Background.Service
             ExecuteAutoCommit();
         }
 
-        private void MergeKeePassDatabases()
+        /// <summary>
+        /// For each .kdbx in the working tree, extracts the same file from the given
+        /// source ref (e.g. "origin/master" or "origin/schultztechnology"), writes it to
+        /// a temp file, and KeePass-merges it into the local copy.
+        /// </summary>
+        public void MergeKeePassDatabasesFromRef(string sourceRefName)
         {
             var repoRoot = _repository.Info.WorkingDirectory;
+
+            // Resolve the source commit/tree
+            var sourceCommit = _repository.Branches[sourceRefName]?.Tip
+                ?? _repository.Tags[sourceRefName]?.PeeledTarget as Commit;
+
+            if (sourceCommit == null)
+            {
+                _logger.LogWarning("Source ref '{Ref}' not found in repository — skipping KeePass merge.", sourceRefName);
+                return;
+            }
+
             var kdbxFiles = Directory.GetFiles(repoRoot, "*.kdbx", SearchOption.AllDirectories);
 
-            foreach (var kdbxFile in kdbxFiles)
+            foreach (var localPath in kdbxFiles)
             {
-                // Check if this file has changes from the remote merge
-                var relativePath = Path.GetRelativePath(repoRoot, kdbxFile);
-                var status = _repository.RetrieveStatus(relativePath);
+                var relativePath = Path.GetRelativePath(repoRoot, localPath)
+                    .Replace('\\', '/');
 
-                if (status == LibGit2Sharp.FileStatus.ModifiedInWorkdir || status == LibGit2Sharp.FileStatus.Conflicted)
+                // Walk the source tree to find the matching blob
+                var treeEntry = sourceCommit[relativePath];
+                if (treeEntry?.Target is not Blob blob)
                 {
-                    _logger.LogInformation("Detected changes in {File}, attempting KeePass merge", relativePath);
+                    _logger.LogInformation("'{File}' not found in ref '{Ref}' — skipping.", relativePath, sourceRefName);
+                    continue;
+                }
 
-                    // Create a temp copy of the current working file before the git merge overwrote it
-                    // Since git merge already happened, we use the merged file as the "remote" version
-                    // and rely on KeePass MergeIn to reconcile entries
-                    _mergeService.MergeDatabase(kdbxFile, kdbxFile);
+                // Write the blob to a temp file so KeePassMergeService can open it
+                var tempPath = Path.Combine(Path.GetTempPath(), $"{Path.GetFileNameWithoutExtension(localPath)}__{sourceRefName.Replace('/', '_')}.kdbx");
+                try
+                {
+                    using (var blobStream = blob.GetContentStream())
+                    using (var tempFile = File.Create(tempPath))
+                    {
+                        blobStream.CopyTo(tempFile);
+                    }
+
+                    _logger.LogInformation("Merging '{Ref}:{File}' into local copy.", sourceRefName, relativePath);
+                    _mergeService.MergeDatabase(localPath, tempPath);
+                }
+                finally
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Fetches the remote, then merges all .kdbx files from <paramref name="sourceBranch"/>
+        /// (e.g. "origin/schultztechnology") into the current working branch, then commits
+        /// and pushes the result.
+        /// </summary>
+        public void MergeFromBranch(string sourceBranch)
+        {
+            lock (_lock)
+            {
+                _logger.LogInformation("Starting cross-branch KeePass merge from '{Branch}'", sourceBranch);
+
+                // Fetch so the ref is up to date
+                var remote = _repository.Network.Remotes["origin"];
+                Commands.Fetch(_repository, remote.Name, Array.Empty<string>(), null, null);
+                _logger.LogInformation("Fetched origin.");
+
+                MergeKeePassDatabasesFromRef(sourceBranch);
+
+                Commands.Stage(_repository, "*.kdbx");
+
+                if (_repository.RetrieveStatus().IsDirty)
+                {
+                    var sig = _repository.Config.BuildSignature(DateTimeOffset.Now);
+                    var msg = $"KeePass merge from {sourceBranch} at {DateTime.Now}";
+                    _repository.Commit(msg, sig, sig);
+                    _logger.LogInformation("Committed: {Message}", msg);
+
+                    var currentBranch = _repository.Head.FriendlyName;
+                    var pushOptions = new PushOptions
+                    {
+                        CredentialsProvider = (url, usernameFromUrl, types) =>
+                            new UsernamePasswordCredentials
+                            {
+                                Username = _configuration["Git:Username"],
+                                Password = _configuration["Git:Password"]
+                            }
+                    };
+                    _repository.Network.Push(remote, $"refs/heads/{currentBranch}", pushOptions);
+                    _logger.LogInformation("Pushed to origin/{Branch}", currentBranch);
+                }
+                else
+                {
+                    _logger.LogInformation("No changes after KeePass merge — nothing to commit.");
                 }
             }
         }
