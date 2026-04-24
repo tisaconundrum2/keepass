@@ -1,25 +1,48 @@
 using Keepass.Background.Service;
 using LibGit2Sharp;
-using Microsoft.Extensions.Logging.Configuration;
-using Microsoft.Extensions.Logging.EventLog;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Configuration.AddJsonFile("../appsettings.json", optional: false, reloadOnChange: true)
-                     .AddEnvironmentVariables()
-                     .AddCommandLine(args);
-
-builder.Services.AddWindowsService(options =>
+if (OperatingSystem.IsWindows())
 {
-    options.ServiceName = "Keepass Background Service";
+    builder.Services.AddWindowsService(options =>
+    {
+        options.ServiceName = "Keepass Background Service";
+    });
+}
+
+var repoPath = builder.Configuration.GetValue<string>("RepoPath");
+
+if (string.IsNullOrEmpty(repoPath))
+{
+    if (!Environment.UserInteractive)
+    {
+        throw new InvalidOperationException("RepoPath is not set in the configuration. Cannot prompt when running as a service.");
+    }
+
+    Console.Write("Enter the path to the repository: ");
+    repoPath = Console.ReadLine()?.Trim().Trim('\'', '"');
+
+    if (string.IsNullOrEmpty(repoPath))
+    {
+        throw new ArgumentException("RepoPath cannot be empty.");
+    }
+}
+
+if (!Directory.Exists(repoPath))
+{
+    throw new DirectoryNotFoundException($"The configured RepoPath '{repoPath}' does not exist.");
+}
+
+builder.Services.AddSingleton(sp =>
+{
+    var watcher = new FileSystemWatcher(repoPath)
+    {
+        Filter = "*.kdbx",
+        IncludeSubdirectories = true
+    };
+    return watcher;
 });
-
-LoggerProviderOptions.RegisterProviderOptions<
-    EventLogSettings, EventLogLoggerProvider>(builder.Services);
-
-var repoPath = builder.Configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
-
-builder.Services.AddSingleton(sp => new FileSystemWatcher(repoPath));
 builder.Services.AddSingleton(sp => new Repository(repoPath));
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddHostedService<Worker>();
