@@ -55,7 +55,14 @@ builder.Services.AddSingleton(sp =>
 });
 builder.Services.AddSingleton(sp => new Repository(repoPath));
 builder.Services.AddSingleton<GitService>();
+builder.Services.AddSingleton<KeePassMergeService>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
+
+if (Environment.UserInteractive)
+{
+    host.Services.GetRequiredService<KeePassMergeService>().InitializeCredentials();
+}
+
 host.Run();
