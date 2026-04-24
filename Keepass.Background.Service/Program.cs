@@ -15,6 +15,16 @@ var repoPath = builder.Configuration.GetValue<string>("RepoPath");
 
 if (string.IsNullOrEmpty(repoPath))
 {
+    var discovered = Repository.Discover(AppContext.BaseDirectory);
+    if (!string.IsNullOrEmpty(discovered))
+    {
+        repoPath = Path.GetFullPath(Path.Combine(discovered, ".."));
+        Console.WriteLine($"Auto-detected repository at: {repoPath}");
+    }
+}
+
+if (string.IsNullOrEmpty(repoPath))
+{
     if (!Environment.UserInteractive)
     {
         throw new InvalidOperationException("RepoPath is not set in the configuration. Cannot prompt when running as a service.");
