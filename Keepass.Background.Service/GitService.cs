@@ -82,16 +82,7 @@ namespace Keepass.Background.Service
                         _repository.Commit(commitMessage, commitSignature, commitSignature);
                         _logger.LogInformation("Committed changes with message: {commitMessage}", commitMessage);
 
-                        var pushOptions = new PushOptions
-                        {
-                            CredentialsProvider = (url, usernameFromUrl, types) =>
-                                new UsernamePasswordCredentials
-                                {
-                                    Username = _configuration["Git:Username"],
-                                    Password = _configuration["Git:Password"]
-                                }
-                        };
-                        _repository.Network.Push(remote, $"refs/heads/{currentBranch}", pushOptions);
+                        _repository.Network.Push(remote, $"refs/heads/{currentBranch}", BuildPushOptions());
                     }
                 }
                 catch (LibGit2Sharp.LockedFileException ex)
@@ -106,6 +97,71 @@ namespace Keepass.Background.Service
                     throw;
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns push options that use explicit credentials from config when available,
+        /// otherwise delegates to the system git credential helper (Keychain on macOS,
+        /// Credential Manager on Windows, libsecret on Linux).
+        /// </summary>
+        private PushOptions BuildPushOptions()
+        {
+            var username = _configuration["Git:Username"];
+            var password = _configuration["Git:Password"];
+
+            return new PushOptions
+            {
+                CredentialsProvider = (url, usernameFromUrl, types) =>
+                {
+                    if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+                        return new UsernamePasswordCredentials { Username = username, Password = password };
+
+                    return ResolveCredentialsFromHelper(url, usernameFromUrl);
+                }
+            };
+        }
+
+        /// <summary>
+        /// Shells out to `git credential fill` to retrieve credentials from whatever
+        /// credential helper is configured on the current platform.
+        /// </summary>
+        private static UsernamePasswordCredentials ResolveCredentialsFromHelper(string url, string usernameHint)
+        {
+            var uri = new Uri(url);
+            var input = $"protocol={uri.Scheme}\nhost={uri.Host}\n";
+            if (!string.IsNullOrEmpty(usernameHint))
+                input += $"username={usernameHint}\n";
+            input += "\n";
+
+            var psi = new ProcessStartInfo("git", "credential fill")
+            {
+                RedirectStandardInput  = true,
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true
+            };
+
+            using var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("Failed to start git credential fill.");
+
+            proc.StandardInput.Write(input);
+            proc.StandardInput.Close();
+
+            var output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+
+            var creds = output.Split('\n')
+                .Select(l => l.Split('=', 2))
+                .Where(p => p.Length == 2)
+                .ToDictionary(p => p[0].Trim(), p => p[1].Trim());
+
+            if (!creds.TryGetValue("username", out var resolvedUser) ||
+                !creds.TryGetValue("password", out var resolvedPass))
+                throw new InvalidOperationException(
+                    "git credential fill did not return username/password. " +
+                    "Configure Git:Username and Git:Password in appsettings.json, or set up a git credential helper.");
+
+            return new UsernamePasswordCredentials { Username = resolvedUser, Password = resolvedPass };
         }
 
         private void OnFileChanged(object sender, FileSystemEventArgs e)
@@ -197,16 +253,7 @@ namespace Keepass.Background.Service
                     _logger.LogInformation("Committed: {Message}", msg);
 
                     var currentBranch = _repository.Head.FriendlyName;
-                    var pushOptions = new PushOptions
-                    {
-                        CredentialsProvider = (url, usernameFromUrl, types) =>
-                            new UsernamePasswordCredentials
-                            {
-                                Username = _configuration["Git:Username"],
-                                Password = _configuration["Git:Password"]
-                            }
-                    };
-                    _repository.Network.Push(remote, $"refs/heads/{currentBranch}", pushOptions);
+                    _repository.Network.Push(remote, $"refs/heads/{currentBranch}", BuildPushOptions());
                     _logger.LogInformation("Pushed to origin/{Branch}", currentBranch);
                 }
                 else
