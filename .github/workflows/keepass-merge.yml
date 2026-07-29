@@ -56,6 +56,8 @@ jobs:
         run: |
           KEEPASS_PASSWORD="$(printf '%s' "$KEEPASS_PASSWORD_B64" | base64 -d)"
           export KEEPASS_PASSWORD
+          echo "Password length: ${#KEEPASS_PASSWORD}"
+          echo "Password SHA256: $(printf '%s' "$KEEPASS_PASSWORD" | sha256sum)"
           bash scripts/local-merge.sh
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
