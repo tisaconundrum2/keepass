@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.sln",
+                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.sln",
+                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +33,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.sln"
+                "${workspaceFolder}/Keepass.Background.Service/Keepass.Background.Service.csproj"
             ],
             "problemMatcher": "$msCompile"
         }

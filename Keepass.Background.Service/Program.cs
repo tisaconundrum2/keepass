@@ -1,68 +1,14 @@
 using Keepass.Background.Service;
-using LibGit2Sharp;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-var builder = Host.CreateApplicationBuilder(args);
-
-if (OperatingSystem.IsWindows())
-{
-    builder.Services.AddWindowsService(options =>
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((ctx, services) =>
     {
-        options.ServiceName = "Keepass Background Service";
-    });
-}
+        services.Configure<MergeOptions>(ctx.Configuration.GetSection("KeePassMerge"));
+        services.AddSingleton<KeePassMergeService>();
+        services.AddHostedService<MergeWorker>();
+    })
+    .Build();
 
-var repoPath = builder.Configuration.GetValue<string>("RepoPath");
-
-if (string.IsNullOrEmpty(repoPath))
-{
-    var discovered = Repository.Discover(AppContext.BaseDirectory);
-    if (!string.IsNullOrEmpty(discovered))
-    {
-        repoPath = Path.GetFullPath(Path.Combine(discovered, ".."));
-        Console.WriteLine($"Auto-detected repository at: {repoPath}");
-    }
-}
-
-if (string.IsNullOrEmpty(repoPath))
-{
-    if (!Environment.UserInteractive)
-    {
-        throw new InvalidOperationException("RepoPath is not set in the configuration. Cannot prompt when running as a service.");
-    }
-
-    Console.Write("Enter the path to the repository: ");
-    repoPath = Console.ReadLine()?.Trim().Trim('\'', '"');
-
-    if (string.IsNullOrEmpty(repoPath))
-    {
-        throw new ArgumentException("RepoPath cannot be empty.");
-    }
-}
-
-if (!Directory.Exists(repoPath))
-{
-    throw new DirectoryNotFoundException($"The configured RepoPath '{repoPath}' does not exist.");
-}
-
-builder.Services.AddSingleton(sp =>
-{
-    var watcher = new FileSystemWatcher(repoPath)
-    {
-        Filter = "*.kdbx",
-        IncludeSubdirectories = true
-    };
-    return watcher;
-});
-builder.Services.AddSingleton(sp => new Repository(repoPath));
-builder.Services.AddSingleton<GitService>();
-builder.Services.AddSingleton<KeePassMergeService>();
-builder.Services.AddHostedService<Worker>();
-
-var host = builder.Build();
-
-if (Environment.UserInteractive)
-{
-    host.Services.GetRequiredService<KeePassMergeService>().InitializeCredentials();
-}
-
-host.Run();
+await host.RunAsync();
