@@ -75,8 +75,14 @@ jobs:
               fi
 
               if [[ "$SEEDED" == "false" ]]; then
-                echo "  $COMMIT: seed (file first appears here)"
-                cp "$INCOMING_TMP" "$RUNNING_TMP"
+                echo "  $COMMIT: seed — running through merge as self-merge to normalise output"
+                KeePassMerge__BasePath="$INCOMING_TMP" \
+                KeePassMerge__IncomingPath="$INCOMING_TMP" \
+                KeePassMerge__OutputPath="$RUNNING_TMP" \
+                KeePassMerge__Password="$KEEPASS_PASSWORD" \
+                dotnet run \
+                  --project Keepass.Background.Service/Keepass.Background.Service.csproj \
+                  --configuration Release --no-build
                 SEEDED=true
                 continue
               fi
