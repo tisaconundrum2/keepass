@@ -60,3 +60,5 @@ appsettings.Production.json
 
 # macOS system files
 .DS_Store
+
+auto_commit.log
