@@ -5,6 +5,10 @@ on:
     branches:
       - master
 
+concurrency:
+  group: keepass-merge-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   merge:
     # Prevent the bot's own commit from triggering this workflow again
