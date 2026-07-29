@@ -1,0 +1,100 @@
+name: KeePass Merge
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  merge:
+    # Prevent the bot's own commit from triggering this workflow again
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build merge tool
+        run: |
+          dotnet build Keepass.Background.Service/Keepass.Background.Service.csproj \
+            --configuration Release
+
+      - name: Fetch previous commit
+        # github.event.before is all-zeros on the very first push; skip extraction then
+        run: |
+          BEFORE="${{ github.event.before }}"
+          echo "BEFORE_SHA=$BEFORE" >> "$GITHUB_ENV"
+          if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "FIRST_PUSH=true" >> "$GITHUB_ENV"
+          else
+            git fetch origin "$BEFORE" --depth=1 || true
+            echo "FIRST_PUSH=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Extract and merge each .kdbx file
+        env:
+          KEEPASS_PASSWORD: ${{ secrets.KEEPASS_MASTER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          find . -name "*.kdbx" -not -path "./.git/*" | while read -r KDBX_PATH; do
+            echo "Processing: $KDBX_PATH"
+            BASENAME=$(basename "$KDBX_PATH" .kdbx)
+            BASE_TMP="/tmp/${BASENAME}__base.kdbx"
+            INCOMING_TMP="/tmp/${BASENAME}__incoming.kdbx"
+            MERGED_TMP="/tmp/${BASENAME}__merged.kdbx"
+
+            # The incoming file is the one just pushed (current HEAD)
+            cp "$KDBX_PATH" "$INCOMING_TMP"
+
+            if [[ "$FIRST_PUSH" == "true" ]]; then
+              echo "First push — no base to merge with; using incoming as output."
+              cp "$INCOMING_TMP" "$MERGED_TMP"
+            else
+              # Extract the file as it existed before this push
+              git show "${BEFORE_SHA}:${KDBX_PATH#./}" > "$BASE_TMP" 2>/dev/null || {
+                echo "File did not exist in previous commit — using incoming as output."
+                cp "$INCOMING_TMP" "$MERGED_TMP"
+                cp "$MERGED_TMP" "$KDBX_PATH"
+                continue
+              }
+
+              KeePassMerge__BasePath="$BASE_TMP" \
+              KeePassMerge__IncomingPath="$INCOMING_TMP" \
+              KeePassMerge__OutputPath="$MERGED_TMP" \
+              KeePassMerge__Password="$KEEPASS_PASSWORD" \
+              dotnet run \
+                --project Keepass.Background.Service/Keepass.Background.Service.csproj \
+                --configuration Release --no-build
+            fi
+
+            cp "$MERGED_TMP" "$KDBX_PATH"
+          done
+
+      - name: Commit and push merged result to master
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "*.kdbx"
+          if git diff --cached --quiet; then
+            echo "No changes after merge — nothing to commit."
+          else
+            git commit -m "[auto-merge] KeePass databases merged at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin master
+          fi
+
+      - name: Update ground-truth branch
+        run: |
+          git push origin HEAD:refs/heads/ground-truth --force

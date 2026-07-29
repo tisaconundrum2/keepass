@@ -1,31 +1,69 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 namespace Keepass.Background.Service;
 
-public class Worker(
-    GitService gitService,
-    ILogger<Worker> logger
-) : BackgroundService
+public class MergeWorker : IHostedService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private readonly KeePassMergeService _mergeService;
+    private readonly MergeOptions _options;
+    private readonly IHostApplicationLifetime _lifetime;
+    private readonly ILogger<MergeWorker> _logger;
+
+    public MergeWorker(
+        KeePassMergeService mergeService,
+        IOptions<MergeOptions> options,
+        IHostApplicationLifetime lifetime,
+        ILogger<MergeWorker> logger)
     {
+        _mergeService = mergeService;
+        _options = options.Value;
+        _lifetime = lifetime;
+        _logger = logger;
+    }
 
-        gitService.InitializeFileWatcher();
-        logger.LogWarning("File watcher initialized at: {time}", DateTimeOffset.Now);
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _lifetime.ApplicationStarted.Register(Run);
+        return Task.CompletedTask;
+    }
 
-        while (!stoppingToken.IsCancellationRequested)
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private void Run()
+    {
+        try
         {
-            logger.LogWarning("Worker running at: {time}", DateTimeOffset.Now);
-
-            try
+            if (string.IsNullOrWhiteSpace(_options.BasePath) ||
+                string.IsNullOrWhiteSpace(_options.IncomingPath) ||
+                string.IsNullOrWhiteSpace(_options.OutputPath) ||
+                string.IsNullOrWhiteSpace(_options.Password))
             {
-                gitService.ExecuteAutoCommit();
-                logger.LogWarning("Git operations completed successfully at: {time}", DateTimeOffset.Now);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error occurred while performing Git operations.");
+                _logger.LogError(
+                    "Missing required configuration. Set KeePassMerge:BasePath, IncomingPath, OutputPath, and Password.");
+                Environment.ExitCode = 1;
+                _lifetime.StopApplication();
+                return;
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+            _logger.LogInformation(
+                "Starting KeePass merge: base={Base} incoming={Incoming} output={Output}",
+                _options.BasePath, _options.IncomingPath, _options.OutputPath);
+
+            _mergeService.MergeDatabase(
+                _options.BasePath, _options.IncomingPath, _options.OutputPath, _options.Password);
+
+            _logger.LogInformation("Merge completed successfully. Output written to {Output}", _options.OutputPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "KeePass merge failed.");
+            Environment.ExitCode = 1;
+        }
+        finally
+        {
+            _lifetime.StopApplication();
         }
     }
 }
