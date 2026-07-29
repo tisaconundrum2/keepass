@@ -56,26 +56,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          find . -name "*.kdbx" -not -path "./.git/*" -not -path "./lib/*" | while read -r KDBX_PATH; do
-            echo "Processing: $KDBX_PATH"
-            REL_PATH="${KDBX_PATH#./}"
-            BASENAME=$(basename "$KDBX_PATH" .kdbx)
+          # Collect kdbx paths relative to repo root
+          KDBX_FILES=()
+          while IFS= read -r f; do
+            KDBX_FILES+=("${f#./}")
+          done < <(find . -name "*.kdbx" -not -path "./.git/*" -not -path "./lib/*")
+
+          # For each kdbx, walk commits oldest→newest using git checkout to extract
+          # binary-safe copies (avoids git show stdout encoding issues).
+          for REL_PATH in "${KDBX_FILES[@]}"; do
+            echo "Processing: $REL_PATH"
+            BASENAME=$(basename "$REL_PATH" .kdbx)
             RUNNING_TMP="/tmp/${BASENAME}__running.kdbx"
             INCOMING_TMP="/tmp/${BASENAME}__incoming.kdbx"
             MERGED_TMP="/tmp/${BASENAME}__merged.kdbx"
 
-            # Walk commits oldest→newest; find seed (first commit where file exists),
-            # then incrementally merge each subsequent commit into the running result.
             SEEDED=false
 
             while IFS= read -r COMMIT; do
-              if ! git show "${COMMIT}:${REL_PATH}" > "$INCOMING_TMP" 2>/dev/null; then
+              # Check file exists in this commit
+              if ! git ls-tree --name-only "${COMMIT}" -- "${REL_PATH}" | grep -q .; then
                 echo "  $COMMIT: file absent — skipping"
                 continue
               fi
 
+              # Extract binary-safe via git restore into a temp location
+              git restore --source="${COMMIT}" --worktree -- "${REL_PATH}"
+              cp "${REL_PATH}" "$INCOMING_TMP"
+
               if [[ "$SEEDED" == "false" ]]; then
-                echo "  $COMMIT: seed — running through merge as self-merge to normalise output"
+                echo "  $COMMIT: seed — self-merge to normalise output"
                 KeePassMerge__BasePath="$INCOMING_TMP" \
                 KeePassMerge__IncomingPath="$INCOMING_TMP" \
                 KeePassMerge__OutputPath="$RUNNING_TMP" \
@@ -104,7 +114,9 @@ jobs:
               continue
             fi
 
-            cp "$RUNNING_TMP" "$KDBX_PATH"
+            # Restore HEAD version first so git sees the file, then overwrite with merged
+            git restore --source=HEAD --worktree -- "${REL_PATH}"
+            cp "$RUNNING_TMP" "${REL_PATH}"
           done
 
       - name: Commit and push merged result to master
