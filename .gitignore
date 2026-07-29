@@ -57,3 +57,6 @@ TestResult.xml
 nunit-*.xml
 
 appsettings.Production.json
+
+# macOS system files
+.DS_Store
