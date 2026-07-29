@@ -7,7 +7,10 @@ REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 # ── Password ──────────────────────────────────────────────────────────────────
-if [[ -z "${KEEPASS_PASSWORD:-}" ]]; then
+if [[ -n "${KEEPASS_PASSWORD_B64:-}" ]]; then
+  KEEPASS_PASSWORD="$(printf '%s' "$KEEPASS_PASSWORD_B64" | base64 -d)"
+  echo "(decoded KEEPASS_PASSWORD from KEEPASS_PASSWORD_B64)"
+elif [[ -z "${KEEPASS_PASSWORD:-}" ]]; then
   read -s -p "KeePass master password: " KEEPASS_PASSWORD
   echo
 else

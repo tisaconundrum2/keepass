@@ -52,8 +52,10 @@ jobs:
 
       - name: Incremental merge each .kdbx file
         env:
-          KEEPASS_PASSWORD: ${{ secrets.KEEPASS_MASTER_PASSWORD }}
+          KEEPASS_PASSWORD_B64: ${{ secrets.KEEPASS_MASTER_PASSWORD_B64 }}
         run: |
+          KEEPASS_PASSWORD="$(printf '%s' "$KEEPASS_PASSWORD_B64" | base64 -d)"
+          export KEEPASS_PASSWORD
           bash scripts/local-merge.sh
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
