@@ -1,24 +1,28 @@
 using Keepass.Background.Service;
-using LibGit2Sharp;
-using Microsoft.Extensions.Logging.Configuration;
-using Microsoft.Extensions.Logging.EventLog;
+using Microsoft.Extensions.Logging;
 
-var builder = Host.CreateApplicationBuilder(args);
+using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+var logger = loggerFactory.CreateLogger("Program");
 
-builder.Services.AddWindowsService(options =>
+// Parse CLI args: --base <path> --incoming <path> --output <path> --password <pwd>
+string? basePath = null, incomingPath = null, outputPath = null, password = null;
+for (int i = 0; i < args.Length - 1; i++)
 {
-    options.ServiceName = "Keepass Background Service";
-});
+    switch (args[i])
+    {
+        case "--base":     basePath     = args[++i]; break;
+        case "--incoming": incomingPath = args[++i]; break;
+        case "--output":   outputPath   = args[++i]; break;
+        case "--password": password     = args[++i]; break;
+    }
+}
 
-LoggerProviderOptions.RegisterProviderOptions<
-    EventLogSettings, EventLogLoggerProvider>(builder.Services);
+if (basePath is null || incomingPath is null || outputPath is null || password is null)
+{
+    Console.Error.WriteLine("Usage: keepass-merge --base <base.kdbx> --incoming <incoming.kdbx> --output <merged.kdbx> --password <pwd>");
+    return 1;
+}
 
-var repoPath = builder.Configuration.GetValue<string>("RepoPath") ?? throw new ArgumentNullException("RepoPath is not set in the configuration.");
-
-builder.Services.AddSingleton(sp => new FileSystemWatcher(repoPath));
-builder.Services.AddSingleton(sp => new Repository(repoPath));
-builder.Services.AddSingleton<GitService>();
-builder.Services.AddHostedService<Worker>();
-
-var host = builder.Build();
-host.Run();
+var mergeService = new KeePassMergeService(loggerFactory.CreateLogger<KeePassMergeService>());
+var worker = new MergeWorker(mergeService, loggerFactory.CreateLogger<MergeWorker>());
+return worker.Run(basePath, incomingPath, outputPath, password);

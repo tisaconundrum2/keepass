@@ -1,31 +1,33 @@
+using Microsoft.Extensions.Logging;
+
 namespace Keepass.Background.Service;
 
-public class Worker(
-    GitService gitService,
-    ILogger<Worker> logger
-) : BackgroundService
+public class MergeWorker(
+    KeePassMergeService mergeService,
+    ILogger<MergeWorker> logger
+)
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// Runs a one-shot KeePass merge: merges <paramref name="incomingPath"/> into
+    /// <paramref name="basePath"/> and writes the result to <paramref name="outputPath"/>.
+    /// Returns 0 on success, 1 on failure.
+    /// </summary>
+    public int Run(string basePath, string incomingPath, string outputPath, string password)
     {
-
-        gitService.InitializeFileWatcher();
-        logger.LogWarning("File watcher initialized at: {time}", DateTimeOffset.Now);
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            logger.LogWarning("Worker running at: {time}", DateTimeOffset.Now);
+            logger.LogInformation("Starting KeePass merge: base={Base} incoming={Incoming} output={Output}",
+                basePath, incomingPath, outputPath);
 
-            try
-            {
-                gitService.ExecuteAutoCommit();
-                logger.LogWarning("Git operations completed successfully at: {time}", DateTimeOffset.Now);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error occurred while performing Git operations.");
-            }
+            mergeService.MergeDatabase(basePath, incomingPath, outputPath, password);
 
-            await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+            logger.LogInformation("Merge completed successfully. Output written to {Output}", outputPath);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "KeePass merge failed.");
+            return 1;
         }
     }
 }
