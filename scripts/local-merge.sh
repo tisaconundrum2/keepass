@@ -7,8 +7,12 @@ REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 # ── Password ──────────────────────────────────────────────────────────────────
-read -s -p "KeePass master password: " KEEPASS_PASSWORD
-echo
+if [[ -z "${KEEPASS_PASSWORD:-}" ]]; then
+  read -s -p "KeePass master password: " KEEPASS_PASSWORD
+  echo
+else
+  echo "(using KEEPASS_PASSWORD from environment)"
+fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "==> Building merge tool..."
