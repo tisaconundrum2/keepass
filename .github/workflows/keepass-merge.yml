@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          find . -name "*.kdbx" -not -path "./.git/*" | while read -r KDBX_PATH; do
+          find . -name "*.kdbx" -not -path "./.git/*" -not -path "./lib/*" | while read -r KDBX_PATH; do
             echo "Processing: $KDBX_PATH"
             REL_PATH="${KDBX_PATH#./}"
             BASENAME=$(basename "$KDBX_PATH" .kdbx)
