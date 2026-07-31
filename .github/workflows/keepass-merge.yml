@@ -23,7 +23,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
+
+      - name: Checkout worker branch (service code)
+        uses: actions/checkout@v4
+        with:
+          ref: worker
+          path: .worker
+          sparse-checkout: |
+            Keepass.Background.Service
+            lib
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -32,7 +40,7 @@ jobs:
 
       - name: Build merge tool
         run: |
-          dotnet build Keepass.Background.Service/Keepass.Background.Service.csproj \
+          dotnet build .worker/Keepass.Background.Service/Keepass.Background.Service.csproj \
             --configuration Release
 
       - name: Build commit list
@@ -62,7 +70,7 @@ jobs:
           export KEEPASS_PASSWORD
           echo "Password length: ${#KEEPASS_PASSWORD}"
           echo "Password SHA256: $(printf '%s' "$KEEPASS_PASSWORD" | sha256sum)"
-          bash scripts/local-merge.sh
+          SERVICE_DIR="$(pwd)/.worker" bash scripts/local-merge.sh
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "*.kdbx"

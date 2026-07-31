@@ -17,9 +17,23 @@ else
   echo "(using KEEPASS_PASSWORD from environment)"
 fi
 
+# ── Service code (from worker branch if not already present) ──────────────────
+if [[ -n "${SERVICE_DIR:-}" ]]; then
+  echo "(using pre-checked-out service at $SERVICE_DIR)"
+elif [[ -d "Keepass.Background.Service" ]]; then
+  SERVICE_DIR="$REPO_ROOT"
+  echo "(using local service code)"
+else
+  SERVICE_DIR="$(mktemp -d)"
+  echo "==> Fetching service code from worker branch..."
+  git fetch origin worker
+  git archive origin/worker -- Keepass.Background.Service lib | tar -x -C "$SERVICE_DIR"
+  echo "(fetched to $SERVICE_DIR)"
+fi
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "==> Building merge tool..."
-dotnet build Keepass.Background.Service/Keepass.Background.Service.csproj \
+dotnet build "$SERVICE_DIR/Keepass.Background.Service/Keepass.Background.Service.csproj" \
   --configuration Release --no-restore -v q
 
 # ── Commit list ───────────────────────────────────────────────────────────────
@@ -60,7 +74,7 @@ echo "==> Incremental merge..."
       KeePassMerge__OutputPath="$RUNNING_TMP" \
       KeePassMerge__Password="$KEEPASS_PASSWORD" \
       dotnet run \
-        --project Keepass.Background.Service/Keepass.Background.Service.csproj \
+        --project "$SERVICE_DIR/Keepass.Background.Service/Keepass.Background.Service.csproj" \
         --configuration Release --no-build
       SEEDED=true
       continue
@@ -72,7 +86,7 @@ echo "==> Incremental merge..."
     KeePassMerge__OutputPath="$MERGED_TMP" \
     KeePassMerge__Password="$KEEPASS_PASSWORD" \
     dotnet run \
-      --project Keepass.Background.Service/Keepass.Background.Service.csproj \
+      --project "$SERVICE_DIR/Keepass.Background.Service/Keepass.Background.Service.csproj" \
       --configuration Release --no-build
 
     cp "$MERGED_TMP" "$RUNNING_TMP"
